@@ -1,0 +1,1805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Co-op Diceroll</title>
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --border: #1e1e1e;
+    --accent: #00e5a0;
+    --accent-dim: rgba(0, 229, 160, 0.12);
+    --accent-glow: rgba(0, 229, 160, 0.35);
+    --text: #e8e8e8;
+    --muted: #5a5a5a;
+  }
+
+  /* ── NATURAL 20 — gold theme ── */
+  body.nat20 {
+    --accent:      #f0c040;
+    --accent-dim:  rgba(240, 192, 64, 0.12);
+    --accent-glow: rgba(240, 192, 64, 0.4);
+    --border:      #2a2200;
+    --surface:     #120f00;
+    padding-top: 42px;
+  }
+
+  body.nat20 #nat20-banner {
+    display: flex !important;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    display: none;
+  }
+
+  #dot-wave {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  header {
+    width: 100%;
+    max-width: 1000px;
+    padding: 60px 24px 0;
+    position: relative;
+    z-index: 1;
+  }
+
+  .eyebrow {
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(42px, 8vw, 72px);
+    font-weight: 800;
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+  }
+
+  h1 span { color: var(--accent); }
+
+  .subtitle {
+    margin-top: 16px;
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+    max-width: 420px;
+    line-height: 1.7;
+  }
+
+  .filter-bar {
+    width: 100%;
+    max-width: 1000px;
+    padding: 36px 24px 0;
+    position: relative;
+    z-index: 1;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .filter-label {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--muted);
+    text-transform: uppercase;
+    width: 100%;
+  }
+
+  .tag-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.05em;
+  }
+
+  .tag-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .tag-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+
+  .main-section {
+    width: 100%;
+    max-width: 1000px;
+    padding: 40px 24px 16px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .roll-btn {
+    width: 100%;
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Syne', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 22px 32px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.25s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+  }
+
+  .roll-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--accent);
+    transform: translateX(-101%);
+    transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+    z-index: 0;
+  }
+
+  .roll-btn:not(:disabled):hover::before { transform: translateX(0); }
+  .roll-btn:not(:disabled):hover { color: var(--bg); box-shadow: 0 0 40px var(--accent-glow); }
+  .roll-btn > * { position: relative; z-index: 1; }
+  .roll-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ── 3D Dice loader ── */
+  .dice-wrap {
+    display: none;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .roll-btn.loading .dice-wrap { display: flex; }
+  .roll-btn.loading .btn-label { display: none; }
+
+  .dice {
+    width: 26px;
+    height: 26px;
+    position: relative;
+    transform-style: preserve-3d;
+    animation: diceRoll 0.55s ease-in-out infinite alternate;
+  }
+
+  /* stagger the three dice */
+  .dice:nth-child(2) { animation-delay: 0.12s; }
+  .dice:nth-child(3) { animation-delay: 0.24s; }
+
+  @keyframes diceRoll {
+    0%   { transform: rotateX(0deg)   rotateY(0deg)   rotateZ(0deg); }
+    20%  { transform: rotateX(90deg)  rotateY(45deg)  rotateZ(20deg); }
+    40%  { transform: rotateX(180deg) rotateY(90deg)  rotateZ(0deg); }
+    60%  { transform: rotateX(270deg) rotateY(180deg) rotateZ(-20deg); }
+    80%  { transform: rotateX(360deg) rotateY(270deg) rotateZ(10deg); }
+    100% { transform: rotateX(450deg) rotateY(360deg) rotateZ(0deg); }
+  }
+
+  .face {
+    position: absolute;
+    width: 26px;
+    height: 26px;
+    background: transparent;
+    border: 1.5px solid var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0;
+    backface-visibility: visible;
+  }
+
+  /* translate each face out by half the cube size (13px) */
+  .face.front  { transform: translateZ(13px); }
+  .face.back   { transform: rotateY(180deg) translateZ(13px); }
+  .face.right  { transform: rotateY(90deg)  translateZ(13px); }
+  .face.left   { transform: rotateY(-90deg) translateZ(13px); }
+  .face.top    { transform: rotateX(90deg)  translateZ(13px); }
+  .face.bottom { transform: rotateX(-90deg) translateZ(13px); }
+
+  /* dots */
+  .face::before,
+  .face::after,
+  .face .d1, .face .d2, .face .d3, .face .d4 {
+    content: '';
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 4px var(--accent-glow);
+  }
+
+  /* Face 1 — center */
+  .face.f1::before { top: 50%; left: 50%; transform: translate(-50%,-50%); }
+  .face.f1::after  { display: none; }
+
+  /* Face 2 — top-right, bottom-left */
+  .face.f2::before { top: 4px;  right: 4px; }
+  .face.f2::after  { bottom: 4px; left: 4px; }
+
+  /* Face 3 — top-right, center, bottom-left */
+  .face.f3::before { top: 4px;  right: 4px; }
+  .face.f3::after  { bottom: 4px; left: 4px; }
+  .face.f3 .d1     { top: 50%; left: 50%; transform: translate(-50%,-50%); }
+
+  /* Face 4 — four corners */
+  .face.f4::before { top: 4px;  left: 4px; }
+  .face.f4::after  { top: 4px;  right: 4px; }
+  .face.f4 .d1     { bottom: 4px; left: 4px; }
+  .face.f4 .d2     { bottom: 4px; right: 4px; }
+
+  /* Face 5 — four corners + center */
+  .face.f5::before { top: 4px;  left: 4px; }
+  .face.f5::after  { top: 4px;  right: 4px; }
+  .face.f5 .d1     { bottom: 4px; left: 4px; }
+  .face.f5 .d2     { bottom: 4px; right: 4px; }
+  .face.f5 .d3     { top: 50%; left: 50%; transform: translate(-50%,-50%); }
+
+  /* Face 6 — two columns of three */
+  .face.f6::before { top: 4px;  left: 4px; }
+  .face.f6::after  { top: 4px;  right: 4px; }
+  .face.f6 .d1     { top: 50%; left: 4px;  transform: translateY(-50%); }
+  .face.f6 .d2     { top: 50%; right: 4px; transform: translateY(-50%); }
+  .face.f6 .d3     { bottom: 4px; left: 4px; }
+  .face.f6 .d4     { bottom: 4px; right: 4px; }
+
+  .dice-label {
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    text-transform: uppercase;
+    animation: labelPulse 0.9s ease-in-out infinite alternate;
+  }
+
+  @keyframes labelPulse {
+    from { opacity: 0.6; }
+    to   { opacity: 1; }
+  }
+
+  .status-line {
+    width: 100%;
+    max-width: 1000px;
+    padding: 0 24px 20px;
+    position: relative;
+    z-index: 1;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    min-height: 28px;
+  }
+
+  @keyframes dots {
+    0%   { content: ''; }
+    25%  { content: '.'; }
+    50%  { content: '..'; }
+    75%  { content: '...'; }
+    100% { content: ''; }
+  }
+
+  .dot-anim::after {
+    content: '';
+    animation: dots 1.4s steps(4, end) infinite;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(18px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes cardPulse {
+    0%   { box-shadow: 0 0 0 0 var(--accent-glow); }
+    60%  { box-shadow: 0 0 0 14px transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+
+  .result-card {
+    width: 100%;
+    max-width: 1000px;
+    margin: 0 24px 48px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    position: relative;
+    z-index: 1;
+    animation: fadeUp 0.4s cubic-bezier(0.4,0,0.2,1) both, cardPulse 0.9s 0.35s ease-out both;
+    overflow: hidden;
+  }
+
+  .card-accent-bar { height: 2px; background: var(--accent); }
+
+  .card-inner {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+  }
+
+  @media (max-width: 640px) {
+    .card-inner { grid-template-columns: 1fr; }
+    .card-img-wrap { height: 180px; }
+  }
+
+  .card-img-wrap {
+    overflow: hidden;
+    background: #080808;
+    position: relative;
+    aspect-ratio: 460 / 215;
+  }
+
+  .card-img-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+    display: block;
+    filter: saturate(0.8);
+    transition: filter 0.35s;
+  }
+
+  .result-card:hover .card-img-wrap img { filter: saturate(1.1); }
+
+  .img-fallback {
+    width: 100%; height: 100%;
+    min-height: 160px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+    color: var(--border);
+  }
+
+  .card-body {
+    padding: 26px 26px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .card-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .badge {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border: 1px solid;
+  }
+
+  .badge-coop  { border-color: var(--accent); color: var(--accent); }
+  .badge-genre { border-color: #252525; color: #666; }
+  .badge-price { border-color: #252525; color: #777; }
+
+  .card-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 23px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: var(--text);
+  }
+
+  .card-desc {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.8;
+    flex: 1;
+  }
+
+  .card-footer {
+    display: flex;
+    align-items: center;
+    margin-top: 6px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .rating-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    white-space: nowrap;
+  }
+
+  .rating-num {
+    font-family: 'Syne', sans-serif;
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--accent);
+    line-height: 1;
+  }
+
+  .rating-label {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .review-bar-wrap { flex: 1; min-width: 80px; }
+  .review-bar-track { height: 3px; background: #1c1c1c; border-radius: 2px; overflow: hidden; }
+  .review-bar-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.9s cubic-bezier(0.4,0,0.2,1); width: 0%; }
+  .review-count { font-size: 10px; color: var(--muted); margin-top: 4px; }
+
+  .steam-btns {
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .steam-link {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    text-decoration: none;
+    border: 1px solid var(--accent);
+    padding: 9px 16px;
+    transition: all 0.2s;
+    white-space: nowrap;
+    display: block;
+    text-align: center;
+  }
+
+  .steam-link:hover { background: var(--accent); color: var(--bg); }
+
+  .steam-link.secondary {
+    border-color: #272727;
+    color: #555;
+    font-size: 9px;
+    padding: 9px 14px;
+  }
+
+  .steam-link.secondary:hover { background: #272727; color: #aaa; }
+
+  .error-box {
+    width: 100%;
+    max-width: 1000px;
+    margin: 0 24px 40px;
+    border: 1px solid rgba(255,80,80,0.2);
+    background: #100808;
+    padding: 20px 24px;
+    font-size: 12px;
+    color: #ff8080;
+    line-height: 1.7;
+    position: relative;
+    z-index: 1;
+  }
+
+  footer {
+    margin-top: auto;
+    padding: 40px 24px 28px;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-align: center;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── Spotlight overlay ── */
+  .spotlight-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.45s ease;
+  }
+
+  .spotlight-backdrop.visible {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  .spotlight-bg {
+    position: absolute;
+    inset: 0;
+    background: rgba(5,5,5,0.88);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .spotlight-card {
+    position: relative;
+    z-index: 1;
+    width: min(860px, 92vw);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    transform: scale(0.93) translateY(20px);
+    transition: transform 0.45s cubic-bezier(0.34,1.46,0.64,1), opacity 0.4s ease;
+    opacity: 0;
+    box-shadow: 0 0 0 1px rgba(0,229,160,0.1), 0 40px 90px rgba(0,0,0,0.75), 0 0 80px rgba(0,229,160,0.05);
+  }
+
+  .spotlight-backdrop.visible .spotlight-card {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+
+  .spotlight-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(5,5,5,0.6) 100%);
+    z-index: 2;
+  }
+
+  .spotlight-close {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    z-index: 10;
+    width: 32px;
+    height: 32px;
+    background: rgba(0,0,0,0.65);
+    border: 1px solid #2a2a2a;
+    color: #666;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    font-family: 'DM Mono', monospace;
+    line-height: 1;
+  }
+
+  .spotlight-close:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(0,229,160,0.08);
+  }
+
+  .spotlight-img-wrap {
+    width: 100%;
+    aspect-ratio: 920 / 430;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .spotlight-img-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+    display: block;
+    filter: saturate(1.0);
+  }
+
+  .spotlight-img-wrap::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 65%;
+    background: linear-gradient(transparent, var(--surface));
+    pointer-events: none;
+  }
+
+  .spotlight-body {
+    padding: 0 32px 30px;
+    margin-top: -36px;
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .spotlight-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  .spotlight-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 34px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    color: var(--text);
+  }
+
+  .spotlight-desc {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.8;
+    max-width: 640px;
+  }
+
+  .spotlight-footer {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+
+  /* ── Session history rolodex ── */
+  #historySection {
+    width: 100%;
+    max-width: 1000px;
+    padding: 0 24px 48px;
+    position: relative;
+    z-index: 1;
+    animation: fadeUp 0.5s cubic-bezier(0.4,0,0.2,1) both;
+  }
+
+  .history-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+
+  .history-label {
+    font-size: 9px;
+    letter-spacing: 0.28em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .history-count {
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    color: #333;
+    text-transform: uppercase;
+  }
+
+  .history-track {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 10px;
+    scrollbar-width: thin;
+    scrollbar-color: #1e1e1e transparent;
+    scroll-behavior: smooth;
+  }
+
+  .history-track::-webkit-scrollbar { height: 3px; }
+  .history-track::-webkit-scrollbar-track { background: transparent; }
+  .history-track::-webkit-scrollbar-thumb { background: #1e1e1e; border-radius: 2px; }
+
+  .history-tile {
+    flex-shrink: 0;
+    width: 160px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    position: relative;
+    transition: border-color 0.2s, transform 0.2s;
+    animation: fadeUp 0.35s cubic-bezier(0.4,0,0.2,1) both;
+    overflow: hidden;
+  }
+
+  .history-tile:hover {
+    border-color: var(--accent);
+    transform: translateY(-3px);
+  }
+
+  .history-tile-img {
+    width: 100%;
+    aspect-ratio: 460 / 215;
+    object-fit: cover;
+    object-position: center top;
+    display: block;
+    filter: saturate(0.7);
+    transition: filter 0.25s;
+  }
+
+  .history-tile:hover .history-tile-img { filter: saturate(1); }
+
+  .history-tile-body {
+    padding: 8px 10px 10px;
+  }
+
+  .history-tile-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .history-tile-score {
+    font-size: 10px;
+    color: var(--accent);
+    margin-top: 3px;
+    letter-spacing: 0.05em;
+  }
+
+  /* Current game tile gets a subtle accent top bar */
+  .history-tile.current {
+    border-color: rgba(0,229,160,0.3);
+  }
+
+  .history-tile.current::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent);
+  }
+
+  @keyframes burst {
+    0%   { transform: translate(-50%,-50%) scale(1); opacity:1; }
+    100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0); opacity:0; }
+  }
+
+  /* ── Filter dropdowns ── */
+    width: 100%;
+    max-width: 1000px;
+    padding: 32px 24px 0;
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+    gap: 24px;
+    box-sizing: border-box;
+    align-self: center;
+  }
+
+  .filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .filter-group-label {
+    font-size: 9px;
+    letter-spacing: 0.25em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .styled-select {
+    appearance: none;
+    -webkit-appearance: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    padding: 10px 36px 10px 14px;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    width: 100%;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%235a5a5a' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+  }
+
+  .styled-select:hover  { border-color: #333; }
+  .styled-select:focus  { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+
+  .styled-select option {
+    background: #161616;
+    color: var(--text);
+  }
+</style>
+</head>
+<body>
+<canvas id="dot-wave"></canvas>
+
+<!-- D20 loading screen -->
+<div id="d20-loader" style="
+  position:fixed;inset:0;z-index:8000;
+  background:#0a0a0a;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:20px;
+  transition:opacity 0.8s ease;
+">
+  <canvas id="d20c" style="width:220px;height:220px;"></canvas>
+  <div id="d20-label" style="font-family:'DM Mono',monospace;font-size:11px;letter-spacing:0.25em;color:#5a5a5a;text-transform:uppercase;">
+    Loading game pool from <span style="color:#00e5a0">SteamSpy</span><span id="d20-dots"></span>
+  </div>
+</div>
+
+<!-- Natural 20 banner -->
+<div id="nat20-banner" style="
+  display:none;
+  position:fixed;top:0;left:0;right:0;z-index:7999;
+  background:linear-gradient(90deg,transparent,rgba(240,192,64,0.15),transparent);
+  border-bottom:1px solid rgba(240,192,64,0.3);
+  padding:10px 24px;
+  font-family:'Syne',sans-serif;
+  font-size:13px;font-weight:700;
+  letter-spacing:0.2em;text-transform:uppercase;
+  color:#f0c040;text-align:center;
+">
+  ✦ Natural 20 — Critical Hit ✦
+</div>
+
+<!-- Spotlight overlay -->
+<div class="spotlight-backdrop" id="spotlightBackdrop">
+  <div class="spotlight-bg" id="spotlightBg"></div>
+  <div class="spotlight-card" id="spotlightCard">
+    <button class="spotlight-close" id="spotlightClose" title="Close">&#x2715;</button>
+    <div class="spotlight-img-wrap" id="spotlightImgWrap">
+      <img id="spotlightImg" src="" alt="">
+    </div>
+    <div class="spotlight-body">
+      <div class="spotlight-meta" id="spotlightMeta"></div>
+      <div class="spotlight-title" id="spotlightTitle"></div>
+      <div class="spotlight-desc" id="spotlightDesc"></div>
+      <div class="spotlight-footer" id="spotlightFooter"></div>
+    </div>
+  </div>
+</div>
+
+<header>
+  <p class="eyebrow">Steam · Co-op · Discovery</p>
+  <h1>Co-op<br><span>Diceroll</span></h1>
+  <p class="subtitle">Surfaces a random multiplayer or co-op Steam game matching your filters. Set your game mode, price range and review threshold, then hit roll.</p>
+</header>
+
+<div class="filter-bar">
+  <span class="filter-label">Game Mode</span>
+  <button class="tag-btn active" data-mode="any">All</button>
+  <button class="tag-btn" data-mode="coop">Co-op Only</button>
+  <button class="tag-btn" data-mode="multiplayer">Multiplayer Only</button>
+</div>
+
+<div class="filter-bar" style="padding-top:16px;">
+  <span class="filter-label">Genre</span>
+  <button class="tag-btn active" data-genre="any">All</button>
+  <button class="tag-btn" data-genre="action">Action</button>
+  <button class="tag-btn" data-genre="RPG">RPG</button>
+  <button class="tag-btn" data-genre="strategy">Strategy</button>
+  <button class="tag-btn" data-genre="adventure">Adventure</button>
+  <button class="tag-btn" data-genre="indie">Indie</button>
+  <button class="tag-btn" data-genre="horror">Horror</button>
+</div>
+
+<div class="filter-row" style="width:100%;max-width:1000px;padding:32px 24px 0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;box-sizing:border-box;position:relative;z-index:1;">
+  <div class="filter-group">
+    <label class="filter-group-label" for="priceFilter">Price range</label>
+    <select class="styled-select" id="priceFilter">
+      <option value="any">Any price</option>
+      <option value="free">Free to play</option>
+      <option value="under5">Under $5</option>
+      <option value="under15">Under $15</option>
+      <option value="under30">Under $30</option>
+      <option value="under60">Under $60</option>
+    </select>
+  </div>
+
+  <div class="filter-group">
+    <label class="filter-group-label" for="reviewFilter">Min. review score</label>
+    <select class="styled-select" id="reviewFilter">
+      <option value="any">Any rating</option>
+      <option value="50">50%+ — Mixed</option>
+      <option value="65">65%+ — Mostly Positive</option>
+      <option value="75">75%+ — Positive</option>
+      <option value="85">85%+ — Very Positive</option>
+      <option value="95">95%+ — Overwhelmingly Positive</option>
+    </select>
+  </div>
+</div>
+
+<div class="main-section">
+  <button class="roll-btn" id="rollBtn">
+    <span class="btn-label">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:10px">
+        <polyline points="23 4 23 10 17 10"/>
+        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+      </svg>
+      Roll a Co-op Game
+    </span>
+
+    <!-- 3D dice loading animation -->
+    <div class="dice-wrap">
+      <!-- Die 1 (shows face 6 front, 1 back, 2 right, 5 left, 3 top, 4 bottom) -->
+      <div class="dice">
+        <div class="face front  f1"></div>
+        <div class="face back   f6"><span class="d1"></span><span class="d2"></span><span class="d3"></span><span class="d4"></span></div>
+        <div class="face right  f2"></div>
+        <div class="face left   f5"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div>
+        <div class="face top    f3"><span class="d1"></span></div>
+        <div class="face bottom f4"><span class="d1"></span><span class="d2"></span></div>
+      </div>
+      <!-- Die 2 -->
+      <div class="dice">
+        <div class="face front  f4"><span class="d1"></span><span class="d2"></span></div>
+        <div class="face back   f3"><span class="d1"></span></div>
+        <div class="face right  f6"><span class="d1"></span><span class="d2"></span><span class="d3"></span><span class="d4"></span></div>
+        <div class="face left   f1"></div>
+        <div class="face top    f2"></div>
+        <div class="face bottom f5"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div>
+      </div>
+      <!-- Die 3 -->
+      <div class="dice">
+        <div class="face front  f5"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div>
+        <div class="face back   f2"></div>
+        <div class="face right  f1"></div>
+        <div class="face left   f6"><span class="d1"></span><span class="d2"></span><span class="d3"></span><span class="d4"></span></div>
+        <div class="face top    f4"><span class="d1"></span><span class="d2"></span></div>
+        <div class="face bottom f3"><span class="d1"></span></div>
+      </div>
+      <span class="dice-label">Rolling&hellip;</span>
+    </div>
+
+  </button>
+</div>
+
+<div class="status-line" id="statusLine"></div>
+<div id="resultArea"></div>
+
+<div id="historySection" style="display:none;">
+  <div class="history-header">
+    <span class="history-label">Session History</span>
+    <span class="history-count" id="historyCount"></span>
+  </div>
+  <div class="history-track" id="historyTrack"></div>
+</div>
+
+<footer id="footerBar">Live data via SteamSpy · <span id="dbMeta">loading...</span></footer>
+
+<script>
+// ─── Database ────────────────────────────────────────────────────────────────
+// Place steam_coop_db.json in the same folder as this HTML file.
+// Generate it by running:  python build_steam_db.py
+
+// ─── SteamSpy live pool ──────────────────────────────────────────────────────
+// Games are fetched once from SteamSpy on page load and cached for the session.
+// On roll, a random appid is picked and full details fetched from Steam.
+
+const PROXIES = [
+  url => `https://coop-diceroll-proxy.rcookson80.workers.dev/?url=${encodeURIComponent(url)}`,
+];
+const STEAMSPY      = 'https://steamspy.com/api.php';
+const STEAM_DETAILS = 'https://store.steampowered.com/api/appdetails';
+const REVIEWS_API   = 'https://store.steampowered.com/appreviews';
+
+// Try each proxy in order until one succeeds
+async function fetchViaProxy(url) {
+  for (const proxy of PROXIES) {
+    try {
+      const r = await fetch(proxy(url), { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+      if (r.ok) return r;
+      console.warn(`Proxy failed (${r.status}): ${proxy(url).slice(0, 60)}`);
+    } catch(e) {
+      console.warn(`Proxy error: ${e.message}`);
+    }
+  }
+  throw new Error('All proxies failed. Check your internet connection.');
+}
+
+function proxied(url) { return url; } // kept for any stray references
+
+// Session cache — populated on page load
+let POOL      = [];   // [{appid, name, is_coop}, ...]
+let poolLoaded = false;
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let genre      = 'any';
+let gameMode   = 'any';
+let seenIds    = new Set();
+let rollHistory = [];
+
+// ─── Boot: fetch SteamSpy pool ───────────────────────────────────────────────
+async function loadDB() {
+  document.getElementById('rollBtn').disabled = true;
+
+  // Start D20 animation — it runs independently
+  const d20Result = startD20Loader();
+
+  try {
+    const [coopGames, mpGames] = await Promise.all([
+      fetchSteamSpyTag('Co-op'),
+      fetchSteamSpyTag('Multiplayer'),
+    ]);
+
+    const merged = new Map();
+    for (const g of coopGames)  merged.set(g.appid, { ...g, is_coop: true });
+    for (const g of mpGames) {
+      if (!merged.has(g.appid)) merged.set(g.appid, { ...g, is_coop: false });
+    }
+
+    POOL = Array.from(merged.values());
+    poolLoaded = true;
+
+    const today = new Date().toISOString().slice(0, 10);
+    document.getElementById('dbMeta').textContent =
+      `${POOL.length.toLocaleString()} games · live from SteamSpy · ${today}`;
+
+    // Wait for D20 to finish settling (min 3.2s for animation), then dismiss
+    const elapsed = Date.now() - d20Result.startTime;
+    const wait    = Math.max(0, 8500 - elapsed);
+    await new Promise(r => setTimeout(r, wait));
+
+    // If rolled a 20 — gold theme before dismissing loader
+    if (d20Result.roll === 20) {
+      activateGoldTheme();
+      await new Promise(r => setTimeout(r, 1200)); // let them see it
+    }
+
+    dismissD20Loader();
+    setStatus('');
+    document.getElementById('rollBtn').disabled = false;
+
+  } catch(e) {
+    dismissD20Loader();
+    setStatus('');
+    document.getElementById('resultArea').innerHTML = `
+      <div class="error-box">
+        <strong>Could not load games from SteamSpy.</strong><br><br>
+        Check your internet connection and reload the page.<br>
+        <small style="opacity:0.5">${e.message}</small>
+      </div>`;
+    document.getElementById('dbMeta').textContent = 'unavailable';
+  }
+}
+
+async function fetchSteamSpyTag(tag) {
+  const games = {};
+  for (let page = 0; page < 20; page++) {
+    const url = `${STEAMSPY}?request=tag&tag=${encodeURIComponent(tag)}&page=${page}`;
+    const r   = await fetchViaProxy(url);
+    if (!r.ok) throw new Error(`SteamSpy HTTP ${r.status}`);
+    const data = await r.json();
+    if (!data || typeof data !== 'object' || Object.keys(data).length === 0) break;
+    for (const [idStr, info] of Object.entries(data)) {
+      const appid = parseInt(idStr);
+      if (!isNaN(appid)) {
+        games[appid] = {
+          appid,
+          name:    info?.name  || '',
+          score:   info?.score_rank || null,  // SteamSpy score hint
+        };
+      }
+    }
+    if (Object.keys(data).length < 1000) break;
+    await sleep(500);
+  }
+  return Object.values(games);
+}
+
+// ─── Filter logic ─────────────────────────────────────────────────────────────
+function applyFilters(pool) {
+  const priceVal  = document.getElementById('priceFilter').value;
+  const reviewVal = document.getElementById('reviewFilter').value;
+
+  // For pool filtering we can only use is_coop since we don't have
+  // price/genre/review data until we fetch appdetails per game.
+  // We pre-filter by mode here; price/review/genre are checked post-fetch.
+  return pool.filter(g => {
+    if (gameMode === 'coop'        && !g.is_coop) return false;
+    if (gameMode === 'multiplayer' &&  g.is_coop) return false;
+    if (seenIds.has(g.appid))                     return false;
+    return true;
+  });
+}
+
+function pickRandom(pool) {
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// ─── UI events ───────────────────────────────────────────────────────────────
+document.querySelectorAll('[data-mode]').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('[data-mode]').forEach(t => t.classList.remove('active'));
+    b.classList.add('active');
+    gameMode = b.dataset.mode;
+  });
+});
+
+document.querySelectorAll('[data-genre]').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('[data-genre]').forEach(t => t.classList.remove('active'));
+    b.classList.add('active');
+    genre = b.dataset.genre;
+  });
+});
+
+document.getElementById('rollBtn').disabled = true;
+document.getElementById('rollBtn').addEventListener('click', roll);
+
+async function roll() {
+  if (!poolLoaded) return;
+
+  const btn = document.getElementById('rollBtn');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  document.getElementById('resultArea').innerHTML = '';
+  setStatus('<span class="dot-anim">Finding a game</span>');
+
+  try {
+    const priceVal  = document.getElementById('priceFilter').value;
+    const reviewVal = document.getElementById('reviewFilter').value;
+    const minReview = reviewVal !== 'any' ? parseInt(reviewVal) : 0;
+
+    // Build a candidate pool filtered by mode
+    let candidates = applyFilters(POOL);
+    if (candidates.length === 0) {
+      // All games seen — reset seen set and retry
+      seenIds.clear();
+      candidates = applyFilters(POOL);
+    }
+
+    // Try up to 25 random picks until one passes all filters
+    let game = null;
+    const tried = new Set();
+    for (let attempt = 0; attempt < 25; attempt++) {
+      if (candidates.length === 0) break;
+
+      // Pick random candidate
+      const idx       = Math.floor(Math.random() * candidates.length);
+      const candidate = candidates[idx];
+      if (tried.has(candidate.appid)) continue;
+      tried.add(candidate.appid);
+
+      setStatus(`<span class="dot-anim">Fetching game details</span>`);
+
+      // ── Step 1: SteamSpy per-app data — used for ALL filtering ──
+      // SteamSpy is the single source of truth for tags, genre, price, reviews
+      let spyData = null;
+      try {
+        const spyR = await fetchViaProxy(`https://steamspy.com/api.php?request=appdetails&appid=${candidate.appid}`);
+        if (spyR.ok) spyData = await spyR.json();
+      } catch(e) { /* non-fatal */ }
+      if (!spyData) continue;
+
+      // ── Review filter from SteamSpy ──
+      const positive = spyData.positive || 0;
+      const negative = spyData.negative || 0;
+      const total    = positive + negative;
+      if (total < 100) continue;
+      const pct = Math.round((positive / total) * 100 * 10) / 10;
+      if (pct < 65) continue;
+      if (minReview > 0 && pct < minReview) continue;
+
+      // ── Price filter from SteamSpy ──
+      // price is in cents (e.g. 999 = $9.99), 0 = free
+      const spyPrice = spyData.price || 0;
+      const isFree   = spyPrice === 0;
+      const priceUsd = spyPrice / 100;
+      if (priceVal === 'free'    && !isFree)                    continue;
+      if (priceVal === 'under5'  && !isFree && priceUsd >= 5)   continue;
+      if (priceVal === 'under15' && !isFree && priceUsd >= 15)  continue;
+      if (priceVal === 'under30' && !isFree && priceUsd >= 30)  continue;
+      if (priceVal === 'under60' && !isFree && priceUsd >= 60)  continue;
+
+      // ── Genre filter from SteamSpy tags ──
+      const spyTags   = Object.keys(spyData.tags || {}).map(t => t.toLowerCase());
+      const spyGenre  = (spyData.genre || '').toLowerCase().split(',').map(s => s.trim());
+      const allLabels = [...spyTags, ...spyGenre];
+
+      if (genre !== 'any') {
+        const g = genre.toLowerCase();
+        const keywordMap = {
+          'horror':    ['horror','survival horror','psychological horror','gore','zombies','zombie','haunted','scary','fear','terror','atmospheric horror','dark horror'],
+          'action':    ['action','shooter','fps','beat em up','fighting','hack and slash','run and gun','battle royale'],
+          'rpg':       ['rpg','role-playing','jrpg','action rpg','dungeon crawler','turn-based rpg','tabletop rpg'],
+          'strategy':  ['strategy','tower defense','rts','4x','grand strategy','tactics','tactical','city builder'],
+          'adventure': ['adventure','exploration','open world','walking simulator','point and click','puzzle adventure'],
+          'indie':     ['indie','independent'],
+        };
+        const keywords = keywordMap[g] || [g];
+        const hasGenre = allLabels.some(label => keywords.some(kw => label.includes(kw)));
+        if (!hasGenre) continue;
+      }
+
+      // ── Step 2: Steam appdetails — used ONLY for co-op/mp verification + display data ──
+      const details = await fetchAppDetails(candidate.appid);
+      if (!details) continue;
+
+      // Co-op / multiplayer verification from Steam categories
+      const catIds        = new Set((details.categories || []).map(c => c.id));
+      const COOP_IDS      = new Set([9, 36, 38]);
+      const MP_IDS        = new Set([1, 9, 27, 36, 38, 49]);
+      const hasRealMp     = [...catIds].some(id => MP_IDS.has(id));
+      const hasRealCoop   = [...catIds].some(id => COOP_IDS.has(id));
+      const hasMultiTag   = catIds.has(1) || catIds.has(27);
+
+      if (!hasRealMp) continue;
+      if (hasRealCoop && !hasMultiTag && gameMode !== 'any') continue;
+      if (gameMode === 'coop'        && !hasRealCoop) continue;
+      if (gameMode === 'multiplayer' &&  hasRealCoop) continue;
+
+      // Build game object — use SteamSpy price/reviews, Steam for display
+      game = buildGameObject(candidate, details, positive, total, pct, isFree, priceUsd);
+      seenIds.add(candidate.appid);
+      break;
+    }
+
+    if (game) {
+      renderCard(game);
+      setStatus(`${POOL.length.toLocaleString()} games in pool`);
+    } else {
+      document.getElementById('resultArea').innerHTML =
+        `<div class="error-box">No games matched your filters after several attempts. Try loosening your criteria.</div>`;
+      setStatus('');
+    }
+
+  } catch(e) {
+    console.error(e);
+    document.getElementById('resultArea').innerHTML =
+      `<div class="error-box">Something went wrong. Please try again.<br><small style="opacity:0.5">${e.message}</small></div>`;
+    setStatus('');
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+}
+
+// ─── Steam API helpers ────────────────────────────────────────────────────────
+async function fetchAppDetails(appid) {
+  try {
+    const r = await fetchViaProxy(`${STEAM_DETAILS}?appids=${appid}&cc=us&l=en`);
+    if (!r.ok) return null;
+    const json  = await r.json();
+    const entry = json[String(appid)];
+    if (!entry?.success) return null;
+    return entry.data;
+  } catch { return null; }
+}
+
+async function fetchReviewStats(appid) {
+  try {
+    const r = await fetchViaProxy(
+      `${REVIEWS_API}/${appid}?json=1&language=all&purchase_type=all&num_per_page=0`
+    );
+    if (!r.ok) return null;
+    const json    = await r.json();
+    const summary = json.query_summary || {};
+    const total    = summary.total_reviews   || 0;
+    const positive = summary.total_positive  || 0;
+    if (total === 0) return null;
+    const pct = Math.round((positive / total) * 100 * 10) / 10;
+    return { positive, total, pct };
+  } catch { return null; }
+}
+
+function buildGameObject(candidate, details, positive, total, pct, isFreeOverride, priceUsdOverride) {
+  const genres   = (details.genres || []).map(g => g.description);
+  const cats     = details.categories || [];
+  const catIds   = new Set(cats.map(c => c.id));
+  const LABELS   = {1:'Multi-player',9:'Co-op',27:'Cross-Platform Multiplayer',36:'Online Co-op',38:'Local Co-op',49:'PvP'};
+  const coopTypes = Object.entries(LABELS)
+    .filter(([id]) => catIds.has(Number(id)))
+    .map(([,label]) => label);
+
+  // Use SteamSpy price if provided, fall back to Steam price
+  const isFree   = isFreeOverride !== undefined ? isFreeOverride : (details.is_free || false);
+  const priceUsd = priceUsdOverride !== undefined ? priceUsdOverride : (isFree ? 0 : (details.price_overview?.final || 0) / 100);
+
+  function pctToLabel(p) {
+    if (p >= 95) return 'Overwhelmingly Positive';
+    if (p >= 85) return 'Very Positive';
+    if (p >= 70) return 'Mostly Positive';
+    if (p >= 65) return 'Positive';
+    if (p >= 40) return 'Mixed';
+    if (p >= 20) return 'Mostly Negative';
+    return 'Overwhelmingly Negative';
+  }
+
+  return {
+    appid:        details.steam_appid || candidate.appid,
+    name:         details.name || candidate.name,
+    is_coop:      candidate.is_coop,
+    review_pct:   pct,
+    review_label: pctToLabel(pct),
+    review_total: total,
+    review_positive: positive,
+    price_usd:    priceUsd,
+    is_free:      isFree,
+    genres,
+    coop_types:   coopTypes,
+    short_desc:   details.short_description || '',
+    header_image: details.header_image ||
+      `https://cdn.akamai.steamstatic.com/steam/apps/${candidate.appid}/header.jpg`,
+    steam_url:    `https://store.steampowered.com/app/${candidate.appid}/`,
+  };
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function getReviewLabel(g) {
+  // If the stored label is valid, use it
+  const bad = ['', 'No Reviews', 'Unknown', null, undefined];
+  if (!bad.includes(g.review_label)) return g.review_label;
+  // Otherwise derive from the actual percentage
+  const pct = g.review_pct;
+  if (pct >= 95) return 'Overwhelmingly Positive';
+  if (pct >= 85) return 'Very Positive';
+  if (pct >= 70) return 'Mostly Positive';
+  if (pct >= 65) return 'Positive';
+  if (pct >= 40) return 'Mixed';
+  if (pct >= 20) return 'Mostly Negative';
+  return 'Overwhelmingly Negative';
+}
+
+// ─── Card renderer ───────────────────────────────────────────────────────────
+function renderCard(g) {
+  const score    = typeof g.review_pct === 'number' ? g.review_pct : null;
+  const imgSrc   = g.header_image || `https://cdn.akamai.steamstatic.com/steam/apps/${g.appid}/header.jpg`;
+  const url      = g.steam_url    || `https://store.steampowered.com/app/${g.appid}/`;
+  const genres   = (g.genres     || []).slice(0, 3);
+  const coopTypes= (g.coop_types || []).slice(0, 2);
+
+  // Format price display
+  let priceDisplay = '';
+  if (g.is_free)              priceDisplay = 'Free to Play';
+  else if (g.price_usd !== null && g.price_usd !== undefined)
+                              priceDisplay = `$${g.price_usd.toFixed(2)}`;
+
+  // Format review count
+  const reviewCount = g.review_total
+    ? g.review_total.toLocaleString() + ' reviews'
+    : 'Steam reviews';
+
+  document.getElementById('resultArea').innerHTML = `
+    <div class="result-card" id="resultCard" style="cursor:pointer;" title="Click to expand">
+      <div class="card-accent-bar"></div>
+      <div class="card-inner">
+        <div class="card-img-wrap" id="imgWrap">
+          <img src="${x(imgSrc)}" alt="${x(g.name)}" id="cardImg" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-meta">
+            ${coopTypes.map(ct => `<span class="badge badge-coop">${x(ct)}</span>`).join('')}
+            ${genres.map(gn => `<span class="badge badge-genre">${x(gn)}</span>`).join('')}
+            ${priceDisplay ? `<span class="badge badge-price">${x(priceDisplay)}</span>` : ''}
+          </div>
+          <div class="card-title">${x(g.name)}</div>
+          <div class="card-desc">${x(g.short_desc || '')}</div>
+          <div class="card-footer">
+            <div class="rating-wrap">
+              <span class="rating-num">${score !== null ? score + '%' : '—'}</span>
+              <span class="rating-label">${x(getReviewLabel(g))}</span>
+            </div>
+            ${score !== null ? `
+            <div class="review-bar-wrap">
+              <div class="review-bar-track">
+                <div class="review-bar-fill" id="rbar"></div>
+              </div>
+              <div class="review-count">${x(reviewCount)}</div>
+            </div>` : ''}
+            <div class="steam-btns">
+              <a class="steam-link" href="steam://store/${g.appid}">&#9671; Open in Steam App</a>
+              <a class="steam-link secondary" href="${x(url)}" target="_blank" rel="noopener">&#8599; Browser</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  if (score !== null) {
+    requestAnimationFrame(() => setTimeout(() => {
+      const bar = document.getElementById('rbar');
+      if (bar) bar.style.width = Math.min(score, 100) + '%';
+    }, 80));
+  }
+
+  const img = document.getElementById('cardImg');
+  if (img) {
+    img.onerror = () => {
+      document.getElementById('imgWrap').innerHTML = '<div class="img-fallback">🎮</div>';
+    };
+  }
+
+  // Auto-open spotlight and wire card click to re-open it
+  showSpotlight(g);
+  document.getElementById('resultCard').addEventListener('click', () => showSpotlight(g));
+
+  // Add to session history rolodex
+  updateHistory(g);
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function setStatus(html) {
+  document.getElementById('statusLine').innerHTML = html;
+}
+
+function x(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ─── Session history rolodex ─────────────────────────────────────────────────
+function updateHistory(game) {
+  // Add to front of history (most recent first)
+  rollHistory.unshift(game);
+
+  // Only show after 2+ rolls
+  if (rollHistory.length < 2) return;
+
+  const section = document.getElementById('historySection');
+  const track   = document.getElementById('historyTrack');
+  const count   = document.getElementById('historyCount');
+
+  section.style.display = 'block';
+  count.textContent = `${rollHistory.length} rolled`;
+
+  // Rebuild track — newest at left, current game highlighted
+  track.innerHTML = '';
+  rollHistory.forEach((g, i) => {
+    const imgSrc = g.header_image ||
+      `https://cdn.akamai.steamstatic.com/steam/apps/${g.appid}/header.jpg`;
+    const score  = typeof g.review_pct === 'number' ? g.review_pct + '%' : '—';
+
+    const tile = document.createElement('div');
+    tile.className = 'history-tile' + (i === 0 ? ' current' : '');
+    tile.innerHTML = `
+      <img class="history-tile-img" src="${x(imgSrc)}" alt="${x(g.name)}"
+           onerror="this.style.opacity='0.3'">
+      <div class="history-tile-body">
+        <div class="history-tile-name">${x(g.name)}</div>
+        <div class="history-tile-score">${score}</div>
+      </div>
+    `;
+    tile.addEventListener('click', () => showSpotlight(g));
+    track.appendChild(tile);
+  });
+
+  // Scroll to start to show the newest tile
+  track.scrollLeft = 0;
+}
+
+// ─── Spotlight overlay ───────────────────────────────────────────────────────
+function showSpotlight(g) {
+  const score       = typeof g.review_pct === 'number' ? g.review_pct : null;
+  const imgSrc      = g.header_image || `https://cdn.akamai.steamstatic.com/steam/apps/${g.appid}/header.jpg`;
+  const url         = g.steam_url    || `https://store.steampowered.com/app/${g.appid}/`;
+  const genres      = (g.genres      || []).slice(0, 3);
+  const coopTypes   = (g.coop_types  || []).slice(0, 2);
+  const reviewCount = g.review_total ? g.review_total.toLocaleString() + ' reviews' : 'Steam reviews';
+
+  let priceDisplay = '';
+  if (g.is_free) priceDisplay = 'Free to Play';
+  else if (g.price_usd !== null && g.price_usd !== undefined)
+    priceDisplay = `$${g.price_usd.toFixed(2)}`;
+
+  // Populate image
+  const sImg = document.getElementById('spotlightImg');
+  sImg.src = imgSrc;
+  sImg.alt = g.name;
+  sImg.onerror = () => {
+    document.getElementById('spotlightImgWrap').innerHTML =
+      '<div style="width:100%;height:100%;background:#080808;display:flex;align-items:center;justify-content:center;font-size:48px;">🎮</div>';
+  };
+
+  // Meta badges
+  document.getElementById('spotlightMeta').innerHTML =
+    coopTypes.map(ct => `<span class="badge badge-coop">${x(ct)}</span>`).join('') +
+    genres.map(gn => `<span class="badge badge-genre">${x(gn)}</span>`).join('') +
+    (priceDisplay ? `<span class="badge badge-price">${x(priceDisplay)}</span>` : '');
+
+  // Title & desc
+  document.getElementById('spotlightTitle').textContent = g.name;
+  document.getElementById('spotlightDesc').textContent  = g.short_desc || '';
+
+  // Footer — rating + bar + buttons
+  document.getElementById('spotlightFooter').innerHTML = `
+    <div class="rating-wrap">
+      <span class="rating-num">${score !== null ? score + '%' : '—'}</span>
+      <span class="rating-label">${x(getReviewLabel(g))}</span>
+    </div>
+    ${score !== null ? `
+    <div class="review-bar-wrap">
+      <div class="review-bar-track">
+        <div class="review-bar-fill" id="srbar"></div>
+      </div>
+      <div class="review-count">${x(reviewCount)}</div>
+    </div>` : ''}
+    <div class="steam-btns">
+      <a class="steam-link" href="steam://store/${g.appid}">&#9671; Open in Steam App</a>
+      <a class="steam-link secondary" href="${x(url)}" target="_blank" rel="noopener">&#8599; Browser</a>
+    </div>
+  `;
+
+  // Animate review bar after render
+  if (score !== null) {
+    requestAnimationFrame(() => setTimeout(() => {
+      const bar = document.getElementById('srbar');
+      if (bar) bar.style.width = Math.min(score, 100) + '%';
+    }, 80));
+  }
+
+  // Show backdrop
+  const backdrop = document.getElementById('spotlightBackdrop');
+  backdrop.classList.add('visible');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeSpotlight() {
+  const backdrop = document.getElementById('spotlightBackdrop');
+  backdrop.classList.remove('visible');
+  document.body.style.overflow = '';
+}
+
+// Close on backdrop bg click or X button
+document.getElementById('spotlightBg').addEventListener('click', closeSpotlight);
+document.getElementById('spotlightClose').addEventListener('click', closeSpotlight);
+
+// Close on Escape key
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeSpotlight();
+});
+
+// ─── D20 Loader ──────────────────────────────────────────────────────────────
+function startD20Loader() {
+  const FINAL = Math.ceil(Math.random() * 20);
+  const result = { roll: FINAL, startTime: Date.now() };
+  const cv = document.getElementById('d20c');
+  const ct = cv.getContext('2d');
+  const SIZE = 220;
+  cv.width = SIZE; cv.height = SIZE;
+
+  const PHI = (1+Math.sqrt(5))/2;
+  const RAW = [[0,1,PHI],[0,-1,PHI],[0,1,-PHI],[0,-1,-PHI],[1,PHI,0],[-1,PHI,0],[1,-PHI,0],[-1,-PHI,0],[PHI,0,1],[-PHI,0,1],[PHI,0,-1],[-PHI,0,-1]];
+  const FACES = [[0,1,8],[0,8,4],[0,4,5],[0,5,9],[0,9,1],[1,6,8],[8,6,10],[8,10,4],[4,10,2],[4,2,5],[5,2,11],[5,11,9],[9,11,7],[9,7,1],[1,7,6],[3,6,7],[3,10,6],[3,2,10],[3,11,2],[3,7,11]];
+  const norm = v => { const l=Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]); return [v[0]/l,v[1]/l,v[2]/l]; };
+  const VERTS = RAW.map(norm);
+  const rX = (v,a) => [v[0],v[1]*Math.cos(a)-v[2]*Math.sin(a),v[1]*Math.sin(a)+v[2]*Math.cos(a)];
+  const rY = (v,a) => [v[0]*Math.cos(a)+v[2]*Math.sin(a),v[1],-v[0]*Math.sin(a)+v[2]*Math.cos(a)];
+  const rZ = (v,a) => [v[0]*Math.cos(a)-v[1]*Math.sin(a),v[0]*Math.sin(a)+v[1]*Math.cos(a),v[2]];
+  const fNorm = (v0,v1,v2) => { const a=[v1[0]-v0[0],v1[1]-v0[1],v1[2]-v0[2]],b=[v2[0]-v0[0],v2[1]-v0[1],v2[2]-v0[2]]; return norm([a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]); };
+
+  const isGold = FINAL === 20;
+  const AC = isGold ? '#f0c040' : '#00e5a0';
+  const AR = isGold ? '240,192,64' : '0,229,160';
+
+  // Find face whose centroid is most aligned with +Z — this is the number face
+  const faceCentroids = FACES.map(fi => {
+    const v0=VERTS[fi[0]],v1=VERTS[fi[1]],v2=VERTS[fi[2]];
+    return norm([(v0[0]+v1[0]+v2[0])/3,(v0[1]+v1[1]+v2[1])/3,(v0[2]+v1[2]+v2[2])/3]);
+  });
+  let bestFaceIdx=0, bestDot=-999;
+  faceCentroids.forEach((c,i)=>{ if(c[2]>bestDot){bestDot=c[2];bestFaceIdx=i;} });
+
+  // Exact rotation to bring that face centroid to [0,0,1]
+  const C = faceCentroids[bestFaceIdx];
+  const TARGET_AX = -Math.atan2(C[1], Math.sqrt(C[0]*C[0]+C[2]*C[2]));
+  const TARGET_AY = -Math.atan2(C[0], Math.sqrt(C[1]*C[1]+C[2]*C[2]));
+
+  const SPIN_X=0.045, SPIN_Y=0.065, SPIN_Z=0.022;
+  const FREE_END=380, DECEL_END=460;
+  const sAX=FREE_END*SPIN_X, sAY=FREE_END*SPIN_Y, sAZ=FREE_END*SPIN_Z;
+  const easeOut = t => 1-Math.pow(1-t,3);
+
+  function getAngles(f) {
+    if(f<=FREE_END) return [f*SPIN_X, f*SPIN_Y, f*SPIN_Z];
+    if(f<=DECEL_END) {
+      const p=(f-FREE_END)/(DECEL_END-FREE_END), e=easeOut(p);
+      return [sAX+(TARGET_AX-sAX)*e, sAY+(TARGET_AY-sAY)*e, sAZ*(1-e)];
+    }
+    const s=f-DECEL_END;
+    return [TARGET_AX+Math.sin(s*0.02)*0.018, TARGET_AY+Math.sin(s*0.016)*0.015, Math.sin(s*0.012)*0.008];
+  }
+
+  let frameN=0, rafId;
+
+  function draw() {
+    ct.clearRect(0,0,SIZE,SIZE);
+    const cx=SIZE/2, cy=SIZE/2, r=82;
+    const alpha = frameN<20 ? frameN/20 : 1;
+    const showFinal = frameN >= DECEL_END;
+    const [aX,aY,aZ] = getAngles(frameN);
+
+    const tv = VERTS.map(v => { let p=rX(v,aX); p=rY(p,aY); return rZ(p,aZ); });
+    const fd = FACES.map((fi,idx) => {
+      const v0=tv[fi[0]],v1=tv[fi[1]],v2=tv[fi[2]];
+      const n=fNorm(v0,v1,v2);
+      return {
+        idx, depth:(v0[2]+v1[2]+v2[2])/3, n,
+        p0:[v0[0]*r,-v0[1]*r], p1:[v1[0]*r,-v1[1]*r], p2:[v2[0]*r,-v2[1]*r],
+        pcx:(v0[0]+v1[0]+v2[0])/3*r, pcy:-(v0[1]+v1[1]+v2[1])/3*r
+      };
+    });
+    fd.sort((a,b)=>a.depth-b.depth);
+
+    ct.save(); ct.translate(cx,cy); ct.globalAlpha=alpha;
+    fd.forEach(f => {
+      ct.beginPath();
+      ct.moveTo(f.p0[0],f.p0[1]); ct.lineTo(f.p1[0],f.p1[1]); ct.lineTo(f.p2[0],f.p2[1]);
+      ct.closePath();
+      const light=Math.max(0,f.n[2]);
+      ct.fillStyle=`rgb(${Math.floor(light*(isGold?18:8))},${isGold?Math.floor(light*12+8):(20+Math.floor(light*25))},${Math.floor(light*(isGold?4:12))})`;
+      ct.fill();
+      ct.strokeStyle=`rgba(${AR},${f.n[2]>-0.1?0.85:0.2})`;
+      ct.lineWidth=f.n[2]>-0.1?1.0:0.4;
+      ct.stroke();
+
+      // Number ONLY on bestFaceIdx, ONLY when facing viewer AND die has settled
+      if(f.idx===bestFaceIdx && f.n[2]>0.05 && showFinal) {
+        const numAlpha = Math.pow(f.n[2], 0.5);
+        ct.font=`bold ${Math.round(r*0.4)}px monospace`;
+        ct.textAlign='center'; ct.textBaseline='middle';
+        ct.fillStyle=AC;
+        ct.globalAlpha=alpha*numAlpha;
+        ct.fillText(String(FINAL), f.pcx, f.pcy);
+        ct.globalAlpha=alpha;
+      }
+    });
+    ct.restore();
+
+    frameN++;
+    rafId=requestAnimationFrame(draw);
+    if(frameN>620) cancelAnimationFrame(rafId);
+  }
+  draw();
+
+  let dotT=0;
+  const dotInt=setInterval(()=>{
+    dotT=(dotT+1)%4;
+    const el=document.getElementById('d20-dots');
+    if(el) el.textContent='.'.repeat(dotT);
+  },400);
+
+  result.dotInterval=dotInt;
+  return result;
+}
+
+function dismissD20Loader() {
+  const loader = document.getElementById('d20-loader');
+  if (!loader) return;
+  loader.style.opacity = '0';
+  setTimeout(() => loader.remove(), 800);
+}
+
+function activateGoldTheme() {
+  document.body.classList.add('nat20');
+  // Update dot-wave canvas accent colour
+  window.__ACCENT_OVERRIDE__ = '240,192,64';
+  // Banner
+  const banner = document.getElementById('nat20-banner');
+  if (banner) {
+    banner.style.display = 'flex';
+    banner.style.alignItems = 'center';
+    banner.style.justifyContent = 'center';
+    // Particle burst
+    for (let i = 0; i < 18; i++) {
+      const star = document.createElement('div');
+      const angle = (i/18)*360;
+      const dist  = 80 + Math.random()*60;
+      star.style.cssText = `
+        position:fixed;top:50%;left:50%;width:6px;height:6px;
+        background:#f0c040;border-radius:50%;
+        pointer-events:none;z-index:9999;
+        transform:translate(-50%,-50%);
+        animation:burst 0.9s ease-out forwards;
+      `;
+      star.style.setProperty('--dx', Math.cos(angle*Math.PI/180)*dist+'px');
+      star.style.setProperty('--dy', Math.sin(angle*Math.PI/180)*dist+'px');
+      document.body.appendChild(star);
+      setTimeout(()=>star.remove(), 1000);
+    }
+  }
+}
+
+// ─── Init ────────────────────────────────────────────────────────────────────
+loadDB();
+</script>
+<script>
+// ─── Horizontal flowing dot wave background ───────────────────────────────────
+(function() {
+  const canvas = document.getElementById('dot-wave');
+  const ctx    = canvas.getContext('2d');
+  let t = 0;
+
+  const COLS   = 90;
+  const ROWS   = 38;
+  const PAD_X  = 0.04;
+  const PAD_Y  = 0.08;
+
+  function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  function draw() {
+    const W = canvas.width;
+    const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    const startX = W * PAD_X;
+    const endX   = W * (1 - PAD_X);
+    const startY = H * PAD_Y;
+    const endY   = H * (1 - PAD_Y);
+    const stepX  = (endX - startX) / (COLS - 1);
+    const stepY  = (endY - startY) / (ROWS - 1);
+
+    for (let row = 0; row < ROWS; row++) {
+      for (let col = 0; col < COLS; col++) {
+        const baseX = startX + col * stepX;
+        const baseY = startY + row * stepY;
+
+        const nx = col / (COLS - 1);
+        const ny = row / (ROWS - 1);
+
+        // Three overlapping waves sweeping horizontally
+        const wave1 = Math.sin(nx * Math.PI * 3.5 - t * 0.9 + ny * 1.8) * 0.28;
+        const wave2 = Math.sin(nx * Math.PI * 2.2 - t * 0.6 + ny * 2.6 + 1.2) * 0.16;
+        const wave3 = Math.sin(nx * Math.PI * 1.4 + t * 0.35 - ny * 1.1) * 0.10;
+
+        const combined = wave1 + wave2 + wave3;
+
+        // Vertical displacement — kept tight for breathing feel
+        const y = baseY + combined * H * 0.07;
+
+        // Brightness
+        const norm      = (combined + 1) / 2;
+        const edgeFade  = Math.sin(nx * Math.PI);
+        const rowFade   = Math.sin(ny * Math.PI);
+        const brightness = norm * edgeFade * rowFade;
+
+        const alpha = 0.04 + 0.65 * brightness;
+        const r     = 0.4  + 1.2  * brightness;
+
+        if (r < 0.3 || alpha < 0.02) continue;
+
+        ctx.beginPath();
+        ctx.arc(baseX, y, r, 0, Math.PI * 2);
+        const AR = window.__ACCENT_OVERRIDE__ || '0,229,160';
+        ctx.fillStyle = `rgba(${AR},${alpha.toFixed(3)})`;
+        ctx.fill();
+      }
+    }
+
+    t += 0.0018;  // slowed from 0.006
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+</script>
+</body>
+</html>

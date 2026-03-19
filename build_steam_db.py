@@ -64,15 +64,31 @@ CATEGORY_LABELS = {
 
 # ─── API helpers ──────────────────────────────────────────────────────────────
 
+# All requests are routed through the Cloudflare Worker proxy.
+# This prevents SteamSpy and Steam from blocking GitHub Actions server IPs.
+PROXY_URL = "https://coop-diceroll-proxy.rcookson80.workers.dev/"
+
 SESSION = requests.Session()
-SESSION.headers.update({"User-Agent": "SteamCoopDBBuilder/1.0"})
+SESSION.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "X-Requested-With": "XMLHttpRequest",
+})
+
+
+def proxied(url, params=None):
+    """Route a URL through the Cloudflare Worker proxy."""
+    import urllib.parse
+    if params:
+        url = url + ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
+    return PROXY_URL + "?url=" + urllib.parse.quote(url, safe="")
 
 
 def get_with_retry(url, params=None, retries=MAX_RETRIES):
-    """GET request with exponential backoff on failure."""
+    """GET request via Cloudflare Worker proxy with exponential backoff."""
+    proxied_url = proxied(url, params)
     for attempt in range(retries):
         try:
-            r = SESSION.get(url, params=params, timeout=15)
+            r = SESSION.get(proxied_url, timeout=30)
             if r.status_code == 429:
                 wait = RETRY_WAIT * (attempt + 1)
                 print(f"    Rate limited. Waiting {wait}s...")
@@ -113,6 +129,7 @@ def fetch_all_steam_apps():
 def fetch_apps_from_steamspy():
     """
     SteamSpy tag endpoint — fetches both 'Co-op' and 'Multiplayer' tagged games.
+    All requests go through the Cloudflare Worker proxy.
     """
     apps = {}
 
@@ -122,9 +139,8 @@ def fetch_apps_from_steamspy():
             url = "https://steamspy.com/api.php"
             params = {"request": "tag", "tag": tag, "page": page}
             try:
-                r = SESSION.get(url, params=params, timeout=20)
+                r = get_with_retry(url, params=params)
                 print(f"    [{tag}] page {page}: HTTP {r.status_code}")
-                r.raise_for_status()
 
                 if page == 0:
                     print(f"    Response preview: {r.text[:200]}")

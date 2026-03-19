@@ -503,110 +503,32 @@ def clear_progress():
 
 # ─── Main build logic ─────────────────────────────────────────────────────────
 
+# ─── Main build logic ─────────────────────────────────────────────────────────
+
 def build_database(output_path, limit=None, resume=False):
     print("\n" + "═" * 60)
     print("  Steam Co-op DB Builder")
     print("═" * 60)
 
-    # Load or start fresh
-    if resume and os.path.exists(PROGRESS_FILE):
-        progress = load_progress()
-        processed_set = set(progress["processed_ids"])
-        games = progress["games"]
-        print(f"\nResuming — {len(processed_set):,} already processed, {len(games):,} games found so far.")
-    else:
-        processed_set = set()
-        games = []
-
-    # Step 1: Get full app list
+    # Fetch all games from SteamSpy — no per-game API calls
     all_apps = fetch_all_steam_apps()
 
-    # Filter to only apps not yet processed
-    remaining = [a for a in all_apps if a["appid"] not in processed_set]
     if limit:
-        remaining = remaining[:limit]
+        all_apps = all_apps[:limit]
 
-    total = len(remaining)
-    print(f"\nApps to process: {total:,}")
-    print(f"Filters: multiplayer+co-op · {MIN_REVIEW_PCT}%+ positive · {MIN_REVIEW_COUNT}+ reviews")
-    print(f"Estimated time: {total * (REQUEST_DELAY + REVIEW_DELAY) / 60:.0f}–{total * (REQUEST_DELAY + REVIEW_DELAY) * 1.5 / 60:.0f} minutes\n")
-    print("─" * 60)
+    print(f"\nStoring {len(all_apps):,} games to database (no per-game filtering).")
+    print("All quality filtering happens at roll time in the web app.\n")
 
-    skipped_not_game  = 0
-    skipped_no_coop   = 0
-    skipped_reviews   = 0
-    errors            = 0
-    processed_now     = []
+    write_output(all_apps, output_path)
 
-    for i, app in enumerate(remaining):
-        appid = app["appid"]
-        name  = app.get("name", f"App {appid}")
-
-        # Progress indicator
-        pct = ((i + 1) / total) * 100
-        print(f"[{i+1:>6}/{total}  {pct:5.1f}%]  {name[:50]:<50}", end=" ", flush=True)
-
-        # ── Fetch app details ──
-        try:
-            time.sleep(REQUEST_DELAY)
-            app_data = fetch_app_details(appid)
-        except Exception as e:
-            print(f"ERROR: {e}")
-            errors += 1
-            processed_set.add(appid)
-            processed_now.append(appid)
-            continue
-
-        if not app_data:
-            print("skip (unavailable)")
-            skipped_not_game += 1
-            processed_set.add(appid)
-            processed_now.append(appid)
-            continue
-
-        # Must be a game
-        if app_data.get("type") != "game":
-            print(f"skip (type={app_data.get('type', '?')})")
-            skipped_not_game += 1
-            processed_set.add(appid)
-            processed_now.append(appid)
-            continue
-
-        # Must have co-op categories
-        if not is_multiplayer_game(app_data, appid):
-            print("skip (no multiplayer/co-op tag)")
-            skipped_no_coop += 1
-            processed_set.add(appid)
-            processed_now.append(appid)
-            continue
-
-        # ── Fetch live review stats ──
-        try:
-            time.sleep(REVIEW_DELAY)
-            review_data = fetch_review_stats(appid)
-        except Exception as e:
-            print(f"ERROR (reviews): {e}")
-            errors += 1
-            processed_set.add(appid)
-            processed_now.append(appid)
-            continue
-
-        if not review_data:
-            print("skip (no reviews)")
-            skipped_reviews += 1
-            processed_set.add(appid)
-            processed_now.append(appid)
-            continue
-
-        positive, total_reviews, pct_positive = review_data
-
-        # Apply filters
-        if total_reviews < MIN_REVIEW_COUNT:
-            print(f"skip (only {total_reviews} reviews)")
-            skipped_reviews += 1
-            processed_set.add(appid)
-            processed_now.append(appid)
-            continue
+    print("\n" + "═" * 60)
+    print("  DONE")
+    print("═" * 60)
+    print(f"  Games in database : {len(all_apps):,}")
+    print(f"  Output file       : {output_path}")
+    size_kb = os.path.getsize(output_path) / 1024
+    print(f"  File size         : {size_kb:.1f} KB ({size_kb/1024:.2f} MB)")
+    print("═" * 60 + "\n")
 
         if pct_positive < MIN_REVIEW_PCT:
             print(f"skip ({pct_positive}% positive)")
@@ -848,11 +770,9 @@ def write_output(games, output_path):
     """Write the games list to the output JSON file."""
     output = {
         "meta": {
-            "generated":     datetime.now(timezone.utc).isoformat(),
-            "total_games":   len(games),
-            "min_review_pct":    MIN_REVIEW_PCT,
-            "min_review_count":  MIN_REVIEW_COUNT,
-            "filters": "co-op tagged, 65%+ positive, 100+ reviews",
+            "generated":    datetime.now(timezone.utc).isoformat(),
+            "total_games":  len(games),
+            "filters":      "raw pool — filtering at roll time",
         },
         "games": games,
     }

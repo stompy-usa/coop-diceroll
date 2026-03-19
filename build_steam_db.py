@@ -153,8 +153,7 @@ def fetch_all_steam_apps():
     print(f"  Combined unique:    {len(combined):,}")
 
     if not combined:
-        print("  Tag endpoint returned nothing — using all_data games with genre fallback.")
-        # Last resort: include everything from all_data, Steam appdetails will filter
+        print("  Tag endpoint returned nothing — storing all games as raw pool.")
         return [{'appid': int(k), 'name': v.get('name',''), 'is_coop': False}
                 for k, v in all_data.items() if isinstance(v, dict)]
 
@@ -525,43 +524,6 @@ def build_database(output_path, limit=None, resume=False):
     print("  DONE")
     print("═" * 60)
     print(f"  Games in database : {len(all_apps):,}")
-    print(f"  Output file       : {output_path}")
-    size_kb = os.path.getsize(output_path) / 1024
-    print(f"  File size         : {size_kb:.1f} KB ({size_kb/1024:.2f} MB)")
-    print("═" * 60 + "\n")
-
-        if pct_positive < MIN_REVIEW_PCT:
-            print(f"skip ({pct_positive}% positive)")
-            skipped_reviews += 1
-            processed_set.add(appid)
-            processed_now.append(appid)
-            continue
-
-        # ── Passed all filters — keep it ──
-        record = build_record(appid, app_data, positive, total_reviews, pct_positive)
-        games.append(record)
-        processed_set.add(appid)
-        processed_now.append(appid)
-        print(f"✓  {pct_positive}% ({total_reviews:,} reviews)  {record.get('price_usd', '?')} USD")
-
-        # Periodic save
-        if len(processed_now) % BATCH_SAVE_EVERY == 0:
-            save_progress(list(processed_set), games)
-            write_output(games, output_path)
-            print(f"\n  ── Checkpoint saved ({len(games)} games so far) ──\n")
-
-    # ─── Final save ───────────────────────────────────────────────────────────
-    write_output(games, output_path)
-    clear_progress()
-
-    print("\n" + "═" * 60)
-    print(f"  DONE")
-    print("═" * 60)
-    print(f"  Games in database : {len(games):,}")
-    print(f"  Skipped (not game): {skipped_not_game:,}")
-    print(f"  Skipped (no multiplayer tag): {skipped_no_coop:,}")
-    print(f"  Skipped (reviews) : {skipped_reviews:,}")
-    print(f"  Errors            : {errors:,}")
     print(f"  Output file       : {output_path}")
     size_kb = os.path.getsize(output_path) / 1024
     print(f"  File size         : {size_kb:.1f} KB ({size_kb/1024:.2f} MB)")

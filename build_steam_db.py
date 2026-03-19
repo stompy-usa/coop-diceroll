@@ -108,107 +108,103 @@ def get_with_retry(url, params=None, retries=MAX_RETRIES):
 
 def fetch_all_steam_apps():
     """
-    Fetch co-op/multiplayer games from SteamSpy's paginated 'all' endpoint.
-    Paginates through all pages (1000 games each), filters locally.
-    Falls back to seed list if unavailable.
+    Two-step fetch strategy:
+    1. Pull ALL games from SteamSpy paginated 'all' endpoint (gets us stats/prices)
+    2. Pull co-op + multiplayer appids from tag endpoint (gets us the filter list)
+    3. Cross-reference to get co-op/mp games with full stats
+    Falls back to seed list if both fail.
     """
-    print("Fetching full game list from SteamSpy (request=all, paginated)...")
+    print("Step 1: Fetching full game stats from SteamSpy (request=all)...")
 
     all_data = {}
     page = 0
-
     while True:
         try:
             url = "https://steamspy.com/api.php"
             params = {"request": "all", "page": page}
             r = get_with_retry(url, params=params, retries=5)
-            print(f"  Page {page}: HTTP {r.status_code} — {len(r.content)/1024:.0f} KB")
-
-            if page == 0:
-                print(f"  Sample response keys: {list(r.json().keys())[:3] if r.json() else 'empty'}")
-
             data = r.json()
             if not data or not isinstance(data, dict) or len(data) == 0:
-                print(f"  Empty page {page} — stopping.")
                 break
-
             all_data.update(data)
-            print(f"  Page {page}: {len(data):,} games  (total so far: {len(all_data):,})")
-
+            print(f"  Page {page}: {len(data):,} games (total: {len(all_data):,})")
             if len(data) < 1000:
                 break
-
             page += 1
-            time.sleep(1.0)  # polite delay between pages
-
+            time.sleep(0.5)
         except Exception as e:
             print(f"  Page {page} failed: {e}")
-            if page == 0:
-                break
             break
 
+    print(f"  Total games fetched: {len(all_data):,}")
+
     if not all_data:
-        print("  SteamSpy all endpoint returned no data. Falling back to seed list.")
+        print("  All endpoint failed — falling back to seed list.")
         return get_seed_app_list()
 
-    print(f"\n  Total games from SteamSpy: {len(all_data):,}")
+    print("\nStep 2: Fetching co-op + multiplayer appids from SteamSpy tag endpoint...")
 
-    # Print sample entry to understand available fields
-    sample = next(iter(all_data.values()))
-    print(f"  Sample game fields: {list(sample.keys()) if isinstance(sample, dict) else type(sample)}")
+    coop_ids  = fetch_tag_appids("Co-op")
+    mp_ids    = fetch_tag_appids("Multiplayer")
+    combined  = coop_ids | mp_ids
 
-    # Filter for co-op/multiplayer — the 'all' endpoint includes a 'genre' field
-    # and sometimes 'tags'. We use genre string matching as primary filter
-    # since full tags aren't available in the all endpoint.
-    COOP_MP_GENRES = {
-        'co-op', 'multi-player', 'multiplayer', 'online co-op',
-        'local co-op', 'online multiplayer', 'local multiplayer',
-    }
+    print(f"  Co-op appids:       {len(coop_ids):,}")
+    print(f"  Multiplayer appids: {len(mp_ids):,}")
+    print(f"  Combined unique:    {len(combined):,}")
 
-    apps = {}
-    for appid_str, info in all_data.items():
-        if not isinstance(info, dict):
-            continue
-        try:
-            appid = int(appid_str)
-        except ValueError:
-            continue
+    if not combined:
+        print("  Tag endpoint returned nothing — using all_data games with genre fallback.")
+        # Last resort: include everything from all_data, Steam appdetails will filter
+        return [{'appid': int(k), 'name': v.get('name',''), 'is_coop': False}
+                for k, v in all_data.items() if isinstance(v, dict)]
 
-        name = info.get('name', '')
+    print("\nStep 3: Cross-referencing to build final game pool...")
 
-        # Check genre field (comma-separated string in all endpoint)
-        genre_str = (info.get('genre') or '').lower()
-        genres = {g.strip() for g in genre_str.split(',')}
-
-        # Check tags if present (dict or list)
-        tags_raw = info.get('tags', {})
-        if isinstance(tags_raw, dict):
-            tag_names = {t.lower() for t in tags_raw.keys()}
-        elif isinstance(tags_raw, list):
-            tag_names = {t.lower() for t in tags_raw}
-        else:
-            tag_names = set()
-
-        all_labels = genres | tag_names
-
-        is_mp   = bool(all_labels & COOP_MP_GENRES)
-        is_coop = bool(all_labels & {'co-op', 'online co-op', 'local co-op', 'co-op campaign'})
-
-        if is_mp or is_coop:
-            apps[appid] = {
+    apps = []
+    matched = 0
+    for appid in combined:
+        info = all_data.get(str(appid)) or all_data.get(appid)
+        is_coop = appid in coop_ids
+        if info and isinstance(info, dict):
+            apps.append({
                 'appid':   appid,
-                'name':    name,
+                'name':    info.get('name', ''),
                 'is_coop': is_coop,
-            }
+            })
+            matched += 1
+        else:
+            # Game not in all_data — include anyway, stats fetched at roll time
+            apps.append({'appid': appid, 'name': '', 'is_coop': is_coop})
 
-    print(f"  Co-op/multiplayer games found: {len(apps):,}")
-    print(f"  Filtered out: {len(all_data) - len(apps):,}")
+    print(f"  Matched in all_data: {matched:,}")
+    print(f"  Total pool:          {len(apps):,}")
+    return apps
 
-    if apps:
-        return list(apps.values())
 
-    print("  No games matched co-op/multiplayer filter — falling back to seed list.")
-    return get_seed_app_list()
+def fetch_tag_appids(tag):
+    """Fetch all appids for a given SteamSpy tag. Returns a set of ints."""
+    appids = set()
+    for page in range(0, 20):
+        try:
+            url = "https://steamspy.com/api.php"
+            params = {"request": "tag", "tag": tag, "page": page}
+            r = get_with_retry(url, params=params, retries=3)
+            data = r.json()
+            if not data or not isinstance(data, dict) or len(data) == 0:
+                break
+            for appid_str in data.keys():
+                try:
+                    appids.add(int(appid_str))
+                except ValueError:
+                    pass
+            print(f"  [{tag}] page {page}: {len(data)} entries (total: {len(appids):,})")
+            if len(data) < 1000:
+                break
+            time.sleep(1.0)
+        except Exception as e:
+            print(f"  [{tag}] page {page} failed: {e}")
+            break
+    return appids
 
 
 def get_seed_app_list():

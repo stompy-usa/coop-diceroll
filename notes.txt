@@ -1,0 +1,18 @@
+1.  Update db script to only fetch co-op tagged games from SteamSpy
+	- Resolves initial lookup from Steam API which fails and is consistent.
+
+2. Push new db revision for background update
+
+
+
+
+Completed - 3/14/2026
+
+════════════════════════════════════════════════════════════
+  Games in database : 2,552
+  Skipped (not game): 6
+  Skipped (no co-op): 617
+  Skipped (reviews) : 3,075
+  Errors            : 0
+  Output file       : steam_coop_db.json
+  File size         : 1787.5 KB (1.75 MB)

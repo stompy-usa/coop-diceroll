@@ -1,0 +1,31 @@
+How to run the app: run python -m http.server 8080 command from that folder and navigate to localhost:8080 again.
+
+eg,
+
+cd "D:\Coop Roulette Project_Master"
+python -m http.server 8080
+```
+
+Then open your browser and go to:
+```
+http://localhost:8080/steam-coop-finder.html
+
+
+To Stop the server
+```
+Ctrl + C
+
+===
+To refresh the .json DB for its monthly refresh to update reviews and scan for new coop games, run:
+python build_steam_db.py --refresh
+```
+
+
+```
+To rebundle the standalone html, run:
+
+python embed_db.py
+
+```
+
+This updates the html to have the latest .json embedded

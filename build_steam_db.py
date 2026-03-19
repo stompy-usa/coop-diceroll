@@ -803,7 +803,7 @@ def refresh_database(output_path):
     print("═" * 60 + "\n")
 
 
-
+def write_output(games, output_path):
     """Write the games list to the output JSON file."""
     output = {
         "meta": {

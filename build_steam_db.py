@@ -88,7 +88,7 @@ def get_with_retry(url, params=None, retries=MAX_RETRIES):
     proxied_url = proxied(url, params)
     for attempt in range(retries):
         try:
-            r = SESSION.get(proxied_url, timeout=30)
+            r = SESSION.get(proxied_url, timeout=120)
             if r.status_code == 429:
                 wait = RETRY_WAIT * (attempt + 1)
                 print(f"    Rate limited. Waiting {wait}s...")
@@ -108,78 +108,80 @@ def get_with_retry(url, params=None, retries=MAX_RETRIES):
 
 def fetch_all_steam_apps():
     """
-    Fetch the co-op game list from SteamSpy.
-    Falls back to the built-in seed list if SteamSpy is unavailable.
+    Fetch co-op/multiplayer games from SteamSpy's 'all' endpoint.
+    Returns all games in a single request, then filters locally for
+    co-op and multiplayer tags. Falls back to seed list if unavailable.
     """
-    print("Fetching Steam app list via SteamSpy...")
+    print("Fetching full game list from SteamSpy (request=all)...")
+    print("  This is a large response — may take 1–3 minutes...")
+
+    # Co-op and multiplayer keywords to filter by
+    COOP_MP_KEYWORDS = {
+        'co-op', 'online co-op', 'local co-op', 'co-op campaign',
+        'multiplayer', 'online multiplayer', 'local multiplayer',
+        'pvp', 'cross-platform multiplayer', 'shared/split screen',
+    }
 
     try:
-        apps = fetch_apps_from_steamspy()
-        if apps:
-            return apps
-        print("  SteamSpy returned empty results.")
-    except Exception as e:
-        print(f"  SteamSpy failed: {e}")
+        url = "https://steamspy.com/api.php"
+        params = {"request": "all"}
+        r = get_with_retry(url, params=params, retries=5)
 
-    print("\n  SteamSpy unavailable. Using built-in seed list.")
-    print("  (Contains ~150 well-known co-op games as fallback)\n")
-    return get_seed_app_list()
+        print(f"  HTTP {r.status_code} — response size: {len(r.content)/1024/1024:.1f} MB")
 
+        data = r.json()
+        if not data or not isinstance(data, dict):
+            print("  Empty or invalid response from SteamSpy all endpoint.")
+            raise ValueError("Empty response")
 
-def fetch_apps_from_steamspy():
-    """
-    SteamSpy tag endpoint — fetches both 'Co-op' and 'Multiplayer' tagged games.
-    All requests go through the Cloudflare Worker proxy.
-    """
-    apps = {}
+        print(f"  Total games in SteamSpy: {len(data):,}")
 
-    for tag in ["Co-op", "Multiplayer"]:
-        print(f"  Fetching '{tag}' tagged games from SteamSpy...")
-        for page in range(0, 20):
-            url = "https://steamspy.com/api.php"
-            params = {"request": "tag", "tag": tag, "page": page}
+        # Filter for co-op/multiplayer games by checking tags
+        apps = {}
+        skipped = 0
+        for appid_str, info in data.items():
+            if not isinstance(info, dict):
+                continue
             try:
-                r = get_with_retry(url, params=params)
-                print(f"    [{tag}] page {page}: HTTP {r.status_code}")
+                appid = int(appid_str)
+            except ValueError:
+                continue
 
-                if page == 0:
-                    print(f"    Response preview: {r.text[:200]}")
+            # Get tags from this game
+            tags = info.get('tags', {})
+            if isinstance(tags, dict):
+                tag_names = {t.lower() for t in tags.keys()}
+            elif isinstance(tags, list):
+                tag_names = {t.lower() for t in tags}
+            else:
+                tag_names = set()
 
-                data = r.json()
-                print(f"    JSON type={type(data).__name__} len={len(data) if isinstance(data, dict) else 'N/A'}")
+            # Check if any co-op/multiplayer keyword matches
+            if tag_names & COOP_MP_KEYWORDS:
+                name = info.get('name', '')
+                is_coop = bool(tag_names & {'co-op', 'online co-op', 'local co-op', 'co-op campaign'})
+                apps[appid] = {
+                    'appid':   appid,
+                    'name':    name,
+                    'is_coop': is_coop,
+                }
+            else:
+                skipped += 1
 
-                if not data or not isinstance(data, dict):
-                    print(f"    Empty/unexpected — stopping '{tag}' pages.")
-                    break
+        print(f"  Co-op/multiplayer games found: {len(apps):,}")
+        print(f"  Filtered out (no mp/co-op tag): {skipped:,}")
 
-                added = 0
-                for appid_str, info in data.items():
-                    try:
-                        appid = int(appid_str)
-                        if appid not in apps:
-                            name = info.get("name", "") if isinstance(info, dict) else ""
-                            apps[appid] = {"appid": appid, "name": name}
-                            added += 1
-                    except (ValueError, AttributeError):
-                        pass
+        if apps:
+            return list(apps.values())
 
-                print(f"    Page {page}: {len(data)} entries  +{added} new  total={len(apps):,}")
-                if len(data) < 1000:
-                    break
-                time.sleep(1.5)
+        print("  No games found after filtering.")
+        raise ValueError("No co-op/multiplayer games found")
 
-            except Exception as e:
-                print(f"    Page {page} failed: {e}")
-                if page == 0:
-                    print(f"    Skipping '{tag}' tag.")
-                break
-
-        time.sleep(2.0)  # pause between tags
-
-    if apps:
-        print(f"\n  SteamSpy total: {len(apps):,} games (co-op + multiplayer)")
-        return list(apps.values())
-    return []
+    except Exception as e:
+        print(f"  SteamSpy all endpoint failed: {e}")
+        print("\n  Falling back to built-in seed list.")
+        print("  (Contains ~150 well-known co-op games as fallback)\n")
+        return get_seed_app_list()
 
 
 def get_seed_app_list():

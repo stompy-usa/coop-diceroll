@@ -108,80 +108,107 @@ def get_with_retry(url, params=None, retries=MAX_RETRIES):
 
 def fetch_all_steam_apps():
     """
-    Fetch co-op/multiplayer games from SteamSpy's 'all' endpoint.
-    Returns all games in a single request, then filters locally for
-    co-op and multiplayer tags. Falls back to seed list if unavailable.
+    Fetch co-op/multiplayer games from SteamSpy's paginated 'all' endpoint.
+    Paginates through all pages (1000 games each), filters locally.
+    Falls back to seed list if unavailable.
     """
-    print("Fetching full game list from SteamSpy (request=all)...")
-    print("  This is a large response — may take 1–3 minutes...")
+    print("Fetching full game list from SteamSpy (request=all, paginated)...")
 
-    # Co-op and multiplayer keywords to filter by
-    COOP_MP_KEYWORDS = {
-        'co-op', 'online co-op', 'local co-op', 'co-op campaign',
-        'multiplayer', 'online multiplayer', 'local multiplayer',
-        'pvp', 'cross-platform multiplayer', 'shared/split screen',
+    all_data = {}
+    page = 0
+
+    while True:
+        try:
+            url = "https://steamspy.com/api.php"
+            params = {"request": "all", "page": page}
+            r = get_with_retry(url, params=params, retries=5)
+            print(f"  Page {page}: HTTP {r.status_code} — {len(r.content)/1024:.0f} KB")
+
+            if page == 0:
+                print(f"  Sample response keys: {list(r.json().keys())[:3] if r.json() else 'empty'}")
+
+            data = r.json()
+            if not data or not isinstance(data, dict) or len(data) == 0:
+                print(f"  Empty page {page} — stopping.")
+                break
+
+            all_data.update(data)
+            print(f"  Page {page}: {len(data):,} games  (total so far: {len(all_data):,})")
+
+            if len(data) < 1000:
+                break
+
+            page += 1
+            time.sleep(1.0)  # polite delay between pages
+
+        except Exception as e:
+            print(f"  Page {page} failed: {e}")
+            if page == 0:
+                break
+            break
+
+    if not all_data:
+        print("  SteamSpy all endpoint returned no data. Falling back to seed list.")
+        return get_seed_app_list()
+
+    print(f"\n  Total games from SteamSpy: {len(all_data):,}")
+
+    # Print sample entry to understand available fields
+    sample = next(iter(all_data.values()))
+    print(f"  Sample game fields: {list(sample.keys()) if isinstance(sample, dict) else type(sample)}")
+
+    # Filter for co-op/multiplayer — the 'all' endpoint includes a 'genre' field
+    # and sometimes 'tags'. We use genre string matching as primary filter
+    # since full tags aren't available in the all endpoint.
+    COOP_MP_GENRES = {
+        'co-op', 'multi-player', 'multiplayer', 'online co-op',
+        'local co-op', 'online multiplayer', 'local multiplayer',
     }
 
-    try:
-        url = "https://steamspy.com/api.php"
-        params = {"request": "all"}
-        r = get_with_retry(url, params=params, retries=5)
+    apps = {}
+    for appid_str, info in all_data.items():
+        if not isinstance(info, dict):
+            continue
+        try:
+            appid = int(appid_str)
+        except ValueError:
+            continue
 
-        print(f"  HTTP {r.status_code} — response size: {len(r.content)/1024/1024:.1f} MB")
+        name = info.get('name', '')
 
-        data = r.json()
-        if not data or not isinstance(data, dict):
-            print("  Empty or invalid response from SteamSpy all endpoint.")
-            raise ValueError("Empty response")
+        # Check genre field (comma-separated string in all endpoint)
+        genre_str = (info.get('genre') or '').lower()
+        genres = {g.strip() for g in genre_str.split(',')}
 
-        print(f"  Total games in SteamSpy: {len(data):,}")
+        # Check tags if present (dict or list)
+        tags_raw = info.get('tags', {})
+        if isinstance(tags_raw, dict):
+            tag_names = {t.lower() for t in tags_raw.keys()}
+        elif isinstance(tags_raw, list):
+            tag_names = {t.lower() for t in tags_raw}
+        else:
+            tag_names = set()
 
-        # Filter for co-op/multiplayer games by checking tags
-        apps = {}
-        skipped = 0
-        for appid_str, info in data.items():
-            if not isinstance(info, dict):
-                continue
-            try:
-                appid = int(appid_str)
-            except ValueError:
-                continue
+        all_labels = genres | tag_names
 
-            # Get tags from this game
-            tags = info.get('tags', {})
-            if isinstance(tags, dict):
-                tag_names = {t.lower() for t in tags.keys()}
-            elif isinstance(tags, list):
-                tag_names = {t.lower() for t in tags}
-            else:
-                tag_names = set()
+        is_mp   = bool(all_labels & COOP_MP_GENRES)
+        is_coop = bool(all_labels & {'co-op', 'online co-op', 'local co-op', 'co-op campaign'})
 
-            # Check if any co-op/multiplayer keyword matches
-            if tag_names & COOP_MP_KEYWORDS:
-                name = info.get('name', '')
-                is_coop = bool(tag_names & {'co-op', 'online co-op', 'local co-op', 'co-op campaign'})
-                apps[appid] = {
-                    'appid':   appid,
-                    'name':    name,
-                    'is_coop': is_coop,
-                }
-            else:
-                skipped += 1
+        if is_mp or is_coop:
+            apps[appid] = {
+                'appid':   appid,
+                'name':    name,
+                'is_coop': is_coop,
+            }
 
-        print(f"  Co-op/multiplayer games found: {len(apps):,}")
-        print(f"  Filtered out (no mp/co-op tag): {skipped:,}")
+    print(f"  Co-op/multiplayer games found: {len(apps):,}")
+    print(f"  Filtered out: {len(all_data) - len(apps):,}")
 
-        if apps:
-            return list(apps.values())
+    if apps:
+        return list(apps.values())
 
-        print("  No games found after filtering.")
-        raise ValueError("No co-op/multiplayer games found")
-
-    except Exception as e:
-        print(f"  SteamSpy all endpoint failed: {e}")
-        print("\n  Falling back to built-in seed list.")
-        print("  (Contains ~150 well-known co-op games as fallback)\n")
-        return get_seed_app_list()
+    print("  No games matched co-op/multiplayer filter — falling back to seed list.")
+    return get_seed_app_list()
 
 
 def get_seed_app_list():

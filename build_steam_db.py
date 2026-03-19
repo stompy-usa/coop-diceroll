@@ -33,7 +33,7 @@ except ImportError:
 
 MIN_REVIEW_PCT   = 65      # Minimum % positive reviews
 MIN_REVIEW_COUNT = 100     # Minimum total reviews
-REQUEST_DELAY    = 1.5     # Seconds between appdetails requests (respect rate limits)
+REQUEST_DELAY    = 0.8     # Seconds between appdetails requests (respect rate limits)
 REVIEW_DELAY     = 1.0     # Seconds between review requests
 BATCH_SAVE_EVERY = 50      # Save progress to disk every N games
 MAX_RETRIES      = 3       # Retries on network failure

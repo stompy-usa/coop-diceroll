@@ -164,6 +164,7 @@ def fetch_all_steam_apps():
             'appid':   appid,
             'name':    info.get('name', ''),
             'is_coop': appid in coop_ids,
+            'genre':   info.get('genre', ''),   # e.g. "Action,Adventure,Indie"
         })
 
     print(f"  Final pool size: {len(apps):,} games")

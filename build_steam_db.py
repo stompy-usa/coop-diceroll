@@ -108,13 +108,11 @@ def get_with_retry(url, params=None, retries=MAX_RETRIES):
 
 def fetch_all_steam_apps():
     """
-    Two-step fetch strategy:
-    1. Pull ALL games from SteamSpy paginated 'all' endpoint (gets us stats/prices)
-    2. Pull co-op + multiplayer appids from tag endpoint (gets us the filter list)
-    3. Cross-reference to get co-op/mp games with full stats
-    Falls back to seed list if both fail.
+    Fetch all games from SteamSpy's paginated 'all' endpoint.
+    Stores the complete pool — all filtering happens at roll time in the web app.
+    Tag-based is_coop detection attempted as a bonus but not required.
     """
-    print("Step 1: Fetching full game stats from SteamSpy (request=all)...")
+    print("Fetching full game list from SteamSpy (request=all)...")
 
     all_data = {}
     page = 0
@@ -136,47 +134,39 @@ def fetch_all_steam_apps():
             print(f"  Page {page} failed: {e}")
             break
 
-    print(f"  Total games fetched: {len(all_data):,}")
-
     if not all_data:
         print("  All endpoint failed — falling back to seed list.")
         return get_seed_app_list()
 
-    print("\nStep 2: Fetching co-op + multiplayer appids from SteamSpy tag endpoint...")
+    print(f"\n  Total games fetched: {len(all_data):,}")
 
-    coop_ids  = fetch_tag_appids("Co-op")
-    mp_ids    = fetch_tag_appids("Multiplayer")
-    combined  = coop_ids | mp_ids
+    # Attempt to get co-op ids from tag endpoint for is_coop flag
+    # This is best-effort — if it fails, all games default to is_coop=False
+    # and the web app verifies co-op status at roll time via Steam appdetails
+    coop_ids = set()
+    try:
+        print("\nAttempting co-op tag fetch (best-effort, not required)...")
+        coop_ids = fetch_tag_appids("Co-op")
+        print(f"  Co-op ids found: {len(coop_ids):,}")
+    except Exception as e:
+        print(f"  Tag fetch failed ({e}) — all games default to is_coop=False")
 
-    print(f"  Co-op appids:       {len(coop_ids):,}")
-    print(f"  Multiplayer appids: {len(mp_ids):,}")
-    print(f"  Combined unique:    {len(combined):,}")
-
-    if not combined:
-        print("  Tag endpoint returned nothing — storing all games as raw pool.")
-        return [{'appid': int(k), 'name': v.get('name',''), 'is_coop': False}
-                for k, v in all_data.items() if isinstance(v, dict)]
-
-    print("\nStep 3: Cross-referencing to build final game pool...")
-
+    # Build final app list from ALL games in all_data
     apps = []
-    matched = 0
-    for appid in combined:
-        info = all_data.get(str(appid)) or all_data.get(appid)
-        is_coop = appid in coop_ids
-        if info and isinstance(info, dict):
-            apps.append({
-                'appid':   appid,
-                'name':    info.get('name', ''),
-                'is_coop': is_coop,
-            })
-            matched += 1
-        else:
-            # Game not in all_data — include anyway, stats fetched at roll time
-            apps.append({'appid': appid, 'name': '', 'is_coop': is_coop})
+    for appid_str, info in all_data.items():
+        if not isinstance(info, dict):
+            continue
+        try:
+            appid = int(appid_str)
+        except ValueError:
+            continue
+        apps.append({
+            'appid':   appid,
+            'name':    info.get('name', ''),
+            'is_coop': appid in coop_ids,
+        })
 
-    print(f"  Matched in all_data: {matched:,}")
-    print(f"  Total pool:          {len(apps):,}")
+    print(f"  Final pool size: {len(apps):,} games")
     return apps
 
 
